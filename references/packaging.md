@@ -45,7 +45,7 @@ Lua 资源 blob 的结构（`srkit/resources/lua.py` 同源结论）：
 ```
 u32 payload_size     源码字节数
 u32 unknown          实测恒为 2
-payload              UTF-8 Lua 源码（或 LuaJIT 字节码，本版本禁止）
+payload              UTF-8 Lua 源码（LuaJIT 字节码在本版本编译不过）
 [trailing]           可选尾部字节
 ```
 
@@ -93,7 +93,7 @@ python -m srkit hash "mods/aabc/anti_air"
 | 异盘 | 复制 |
 | 删除 | 只删游戏目录里的，库不动 |
 
-**推论（P0 红线）**：游戏目录里的 patch 与库里是**同一个文件的两个名字**。
+**推论（P0 坑）**：游戏目录里的 patch 与库里是**同一个文件的两个名字**。
 直接编辑游戏目录里的 patch = 改库。要改就改库，然后重新 deploy。
 
 ## 5. 资源类 mod 的附加文件
