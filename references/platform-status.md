@@ -90,17 +90,30 @@ MDL3 的 `mdl_native_bridge.dll` 走的是最后一条。缺 **Certum Code Signi
 | patch 上限 | 约 512 个（保护性措施，后续版本可能放宽） |
 | Data Hub | 随包附带，单独开关；**不要打包进自己的 mod** |
 
-## 5. 本机环境快照
+## 5. 环境由 `doctor` 探测，不要写死
 
-| 项 | 值 |
+不同人的游戏目录、mod 库、管理器位置都不一样。**任何文档里都不要写死路径**，
+统一跑：
+
+```bash
+python tools/hd2mod.py doctor
+```
+
+它会自动：
+
+| 找什么 | 怎么找 |
 |---|---|
-| 游戏目录 | `D:\Steam\steamapps\common\Helldivers 2` |
-| build | `26251122` |
-| EAC | `EasyAntiCheat\` + `start_protected_game.exe` 存在 |
-| mod 库 | `D:\HD2 Mods`（与游戏同盘 → 硬链接部署） |
-| 管理器 | `C:\Users\50709\Desktop\HD2 Mod Quick Deploy.exe`（hd2-mod-cli） |
-| 管理器数据 | `%USERPROFILE%\.hd2-mod-cli\` |
-| 工具根 | `C:\Users\50709\Downloads\modtool` |
+| 游戏目录 | 配置缓存 → `HD2_GAME` → Steam 注册表 → `libraryfolders.vdf` 遍历所有库 |
+| 游戏 build | 同级 `appmanifest_553850.acf` 的 `buildid` |
+| mod 库 | 配置缓存 → `HD2_LIB` → 游戏同盘的 `HD2 Mods` → 常见盘符 |
+| 管理器 | `hd2qd` 在 PATH？→ `%USERPROFILE%\.hd2-mod-cli` 有库数据？→ 桌面的 GUI |
+| 加载器 | 读管理器的 `library.json`，列出 MDL3 / Chef / BML / Bingus 及启用状态 |
+
+探测到的路径会写进 `~/.hd2-gameplay-mod/config.json`，下次直接复用。
+找不到时用 `set-game` / `set-lib` 手动指定一次即可。
+
+> 参考基线（作者机器，仅作对照，**不要当作通用路径**）：
+> build `26251122` · EAC 已就位 · 库与游戏同盘 · MDL3 启用 · `hd2qd` 未进 PATH（走 GUI）。
 
 ## 6. 重新核实的触发条件
 

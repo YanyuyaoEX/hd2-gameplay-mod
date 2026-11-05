@@ -1,21 +1,20 @@
 ---
 name: hd2-gameplay-mod
 description: |
-  《绝地潜兵2》玩法类 mod 的开发技能：从立项选载体、写 Lua 5.1 玩法脚本、打包成 .patch_N 归档、
-  过静态门禁、用 hd2-mod-cli 部署、实机验证到归档发布，全流程可执行。
-  Use when 用户说「做个 HD2 玩法 mod」「改绝地潜兵2 的 HUD / 提示 / 判定」「HD2 脚本 mod」「MDL3 mod」
-  「patch_0 怎么打」「Lua mod 加载不出来」「mod 进游戏没反应」「srkit 打包」「HD2 mod 打包发布」
-  「10月20日之后 mod 还能不能用」。
-  ⚠ 本技能只做「不改内存、不绕反作弊、不影响他人体验」的玩法增强；红线清单见 §4，越线即停。
+  《绝地潜兵2》玩法 mod 的「许愿式」开发技能：用户只要说想要什么效果，就能从零做出一个可安装的 mod。
+  覆盖立项、写 Lua 5.1 玩法脚本、打包 .patch_N、静态门禁、部署、实机验证、归档发布全流程。
+  Use when 用户说「给我做个 HD2 的 mod」「我想要个显示敌人血条的」「做个自动标记的」「改个准星」
+  「绝地潜兵2 能不能加个 XX 提示」「HD2 玩法 mod」「HD2 脚本 mod」「MDL3 mod」
+  「patch_0 怎么打」「Lua mod 加载不出来」「mod 进游戏没反应」「10月20日之后 mod 还能不能用」。
+  ⚠ 只做「不读写内存、不绕反作弊、不影响他人体验」的玩法增强；红线清单见 §4，越线即停。
 license: MIT
-compatibility: Windows · Python 3.11+（仅标准库）· srkit · hd2-mod-cli(hd2qd) · Helldivers 2 PC/Steam
+compatibility: Windows · Python 3.11+（零依赖）· Helldivers 2 PC/Steam · 可选 hd2-mod-cli / srkit
 metadata:
   domain: hd2-modding
   kind: workflow
   verified-build: "26251122"
   verified-date: "2026-11-05"
-  toolroot: "C:/Users/50709/Downloads/modtool"
-  library: "D:/HD2 Mods"
+  self-contained: "true"
 ---
 
 # HD2 玩法 mod 开发 · 可执行技能
@@ -36,6 +35,55 @@ metadata:
 | 读写游戏内存、注入 DLL、绕反作弊 | **不做**（§4 红线 1–4） | 10-20 之后技术上已死，且违规 |
 
 **默认起点**：`90%` 的「玩法 mod」= 路线 A。先跑 §5 的 Step 0–2，别急着写代码。
+
+---
+
+## 0.5 许愿模式：别人只说「我想要个 XX」时怎么接
+
+这一节是**给 AI 的行为准则**。用户不需要懂模块路径、加载器、patch 编号，也不需要装 Python。
+
+### 只问三件事，问完就开工
+
+| 问什么 | 用来定 | 例子 |
+|---|---|---|
+| 你想要屏幕上多什么 / 少什么？ | 是 UI 还是逻辑 | 「想让准星旁边显示提前量」 |
+| 什么时候出现？ | 触发条件 | 「锁定飞行目标的时候」 |
+| 怎么算做成了？ | 验收标准 | 「打空中的目标时，准星会跟着它走」 |
+
+**不要问**：用什么加载器、模块路径叫什么、要不要 hook、manifest 怎么写。这些是你的活，不是用户的。
+
+### 然后全自动跑完，只在两个点找用户
+
+```
+doctor  →  new  →  写 src/main.lua  →  build  →  check  →  install
+   ↑                                                          ↓
+ 差环境才找用户                                      告诉用户点 Deploy
+```
+
+1. `python tools/hd2mod.py doctor` —— 游戏没装、库找不到，就直说差什么，**不要硬做**。
+2. 从"想要的效果"映射到路线（见下表）。
+3. `new` 起工程 → 写 `src/main.lua` → `build` → `check`（必须全绿）。
+4. `install` → 然后用**人话**告诉用户下一步。
+
+### 交付话术
+
+> ✅「装好了。进游戏按 ESC 打开 **MDL 设置**，列表里应该有个「XX」，打开它，然后打一只飞行怪试试。」
+>
+> ❌「模块路径 mods/x/y，file_id 0x…，已通过 murmur64 校验。」（用户不关心，也看不懂）
+
+### 愿望 → 可行性对照
+
+| 用户这么说 | 能做吗 | 走哪 |
+|---|---|---|
+| 显示血量 / 弹药 / 队友状态 / 敌人数量 | ✅ | 路线 A，读 `HD2Data` |
+| 准星、提前量、屏幕标记、距离显示 | ✅ | 路线 A，`HD2Data` + `Gui` |
+| 按键触发某个动作 / 快捷开关 | ✅ | 路线 A，选项 + 引擎 API |
+| 换个贴图 / 音效 / 模型 | ✅ | 路线 B |
+| 改伤害、冷却、弹容这些**数值** | ⚠️ 能做，但不走脚本 | 路线 C（社区工具），本技能只给边界 |
+| 自动瞄准 / 自动开枪 / 透视 / 无限弹药 / 无敌 | ❌ | 红线 §1.2、§4 |
+| 让队友也看到我改的东西 | ❌ | 影响他人 |
+
+**做不到就直说**，并给一个"能做的最接近的版本"。不要用"应该可以"糊过去。
 
 ---
 
@@ -186,7 +234,7 @@ mod 大面积失效的真实原因是同一次更新里 **Lua 运行时从 LuaJI
 
 | # | 错误 | 症状 | 正确做法 |
 |---|---|---|---|
-| **11** | 资源 `file_id` ≠ `murmur64(模块路径)` | 包里明明有脚本，加载器找不到 / 静默不执行 | `srkit hash "mods/<作者>/<名字>"`，两处都写这个值 |
+| **11** | 资源 `file_id` ≠ `murmur64(模块路径)` | 包里明明有脚本，加载器找不到 / 静默不执行 | `hd2mod.py check` 会算；改 `file_id` 时三处要同步 |
 | **12** | 首行声明 `-- HD2-Addon:` 与真实模块路径不一致 | 被别的加载器抢走或直接跳过 | 声明必须**逐字符**等于 `mods/<作者>/<名字>` |
 | **13** | `manifest.Options[].Include` 指向不存在的文件夹 | 管理器部署 0 个文件，或报缺文件 | `check` 逐项比对大小写 |
 | **14** | 跨 option 文件夹连续编号 `patch_0/1/2` | 管理器会**重新编号**，你写的编号被覆盖，内容错位 | 每个 option 文件夹**各自从 `patch_0` 开始** |
@@ -202,7 +250,7 @@ mod 大面积失效的真实原因是同一次更新里 **Lua 运行时从 LuaJI
 | **19** | 在"已经装了一堆 mod"的环境上做基线测试 | 分不清是自己坏了还是别人冲突 |
 | **20** | 不记 build 号就宣称"能用" | 下一次更新后无法判断是回归还是环境变了 |
 | **21** | 不保留可复现构建（源码 + 打包参数） | 只能改二进制，等于不可维护 |
-| **22** | 用 `verify` 通过就认为"容器字节一致" | `pack` 会做 16 字节对齐，容器长度本就与原件不同【实测】 |
+| **22** | 用第三方 `verify` 通过就认为"容器完全正确" | 它只验资源层；`srkit pack` 还会留下陈旧的"自身长度"字段【实测】 |
 | **23** | 在 Git Bash 里用 `/tmp/xxx` 传路径给 Windows Python | Git Bash 的 `/tmp` ≠ Python 的 `C:\tmp`，会报文件不存在【实测】 |
 
 ---
@@ -226,21 +274,40 @@ mod 大面积失效的真实原因是同一次更新里 **Lua 运行时从 LuaJI
 
 ### Step 1 · 环境体检
 
+一条命令搞定，**不要手写路径**（会自动找 Steam 库、mod 库、管理器）：
+
 ```bash
-# 1) 游戏必须已退出
-tasklist | findstr /i "helldivers" || echo "OK: 游戏未运行"
-
-# 2) 当前 build（写进你的开发记录）
-powershell -c "(Select-String -Path 'D:\Steam\steamapps\common\Helldivers 2\..\..\appmanifest_553850.acf' -Pattern 'buildid').Line"
-
-# 3) srkit 自检（不碰游戏文件）
-cd "C:/Users/50709/Downloads/modtool/hd2-srkit-master" && python tests/selftest.py
-
-# 4) 现有部署状态（只读）
-& "C:\Users\50709\Desktop\HD2 Mod Quick Deploy.exe" --select ""   # 或 GUI 看列表
+python tools/hd2mod.py doctor
 ```
 
-**合格判据**：selftest 全绿；build 号记下来了。
+正常输出长这样：
+
+```
+[ OK ] 游戏目录   <自动发现>
+[ OK ] 游戏 build 26251122
+[ OK ] 反作弊     EAC 已就位
+[ OK ] mod 库     <自动发现>（与游戏同盘，部署走硬链接）
+[ OK ] 管理器数据 <自动发现>
+[ OK ] 加载器     MDL3：启用
+[ -- ] srkit      未配置（Lua 路线不需要）
+```
+
+找不到游戏/库时：
+
+```bash
+python tools/hd2mod.py set-game "X:/Steam/steamapps/common/Helldivers 2"
+python tools/hd2mod.py set-lib  "X:/HD2 Mods"
+```
+
+路径会记到 `~/.hd2-gameplay-mod/config.json`，下次不用再给。
+
+**还要确认一件事**：游戏必须已退出（部署时才需要，但养成习惯）。
+
+```bash
+tasklist | findstr /i "helldivers" || echo "OK: 游戏未运行"
+```
+
+**合格判据**：`doctor` 通过，且 build 号记下来了。
 
 ### Step 2 · 选载体 + 定模块路径
 
@@ -256,20 +323,23 @@ python -m srkit hash "mods/<作者>/<名字>"
 ### Step 3 · 建工程
 
 ```bash
-python "C:/Users/50709/WorkBuddy/2026-11-05-18-00-18/hd2-gameplay-mod/tools/hd2mod.py" new \
-  --author <作者> --name <名字> --title "<显示名>" --out "D:/HD2 Mods/_src/<名字>"
+python tools/hd2mod.py new \
+  --author <作者> --name <名字> --title "<显示名>" --out "<库>/_src/<名字>"
 ```
+
+`--author` 和 `--name` 只用小写字母/数字/下划线（会进模块路径，发布后不能改）。
+`--out` 建议放在 mod 库旁的 `_src`，与部署库分开。
 
 产出：
 
 ```
 <名字>/
-├── manifest.json          # 管理器识别用（Guid 已冻结）
-├── mod.project.json       # 本工程的构建参数
+├── manifest.json          # 管理器识别用（Guid 已生成，永久冻结）
+├── mod.project.json       # 构建参数（module 就是这个 mod 的身份）
 ├── README.md              # 依赖声明（必须写）
 ├── CHANGELOG.md
 ├── src/main.lua           # 你只改这个
-└── build/                 # 产物
+└── dist/                  # build 之后才有
 ```
 
 ### Step 4 · 写脚本（路线 A 的核心）
@@ -291,22 +361,26 @@ return M
 ### Step 5 · 打包
 
 ```bash
-python ".../tools/hd2mod.py" build "D:/HD2 Mods/_src/<名字>"
+python tools/hd2mod.py build "<工程目录>" --zip
 ```
 
-内部做的事（也是你出问题时要能手工复现的）：
+内部做的事（**不依赖 srkit**，容器由工具自己生成）：
 
-1. 建 srkit 工作区 → 写 `package.json` / `resource.json`，`file_id = murmur64(模块路径)`
-2. `python -m srkit pack <ws> -o <out>`
-3. 产物落到 `build/<Option>/9ba626afa44a3aa3.patch_0`
-4. 自动跑 §5 Step 6 的静态门禁
+1. 校验首行声明 == `mod.project.json.module`
+2. `file_id = murmur64(module)`
+3. 按已知格式生成单 lua 资源的 `9ba626afa44a3aa3.patch_0`
+4. 落到 `dist/<ModName>/<Option>/`
+5. 复制 manifest / README / CHANGELOG / cover
 
-**合格判据**：`srkit info` 能读出 1 个 `lua` 资源，且 `file id` 等于模块路径的哈希。
+**合格判据**：产物字节数 = `192 + 8 + 脚本字节数`；`file_id` 等于模块路径哈希。
+
+> 这条路已经和真实可加载的 mod 包做过**逐字节比对**（同输入 → 同字节），
+> 并用第三方解析器 srkit 交叉验证过（`srkit list` 认得出 ID，`srkit check` 往返一致）。
 
 ### Step 6 · 静态门禁（不通过不许部署）
 
 ```bash
-python ".../tools/hd2mod.py" check "D:/HD2 Mods/_src/<名字>"
+python tools/hd2mod.py check "<工程目录>"
 ```
 
 必须全绿：
@@ -315,22 +389,23 @@ python ".../tools/hd2mod.py" check "D:/HD2 Mods/_src/<名字>"
 |---|---|
 | 声明 vs 路径 | 首行 `-- HD2-Addon:` == `mod.project.json.module` |
 | 资源 ID | `file_id == murmur64(module)` |
-| manifest | Guid 合法且与历史一致；Options 的 Include 目录都存在 |
-| patch | 能被 srkit 解析；数量 ≤ 512 |
-| Lua 5.1 | `forbidden=0`（无 ffi/bit/jit/goto/位运算/BOM） |
-| 编码 | UTF-8 无 BOM；行尾 LF 或 CRLF 均可 |
-| 体积 | 单脚本 ≤ 4 MB（Chef 上限）；总包合理 |
+| 包自洽 | 头部记录的自长度 == 实际文件长度；payload 长度 == 脚本长度 |
+| manifest | Guid 合法；Name / Version / Options 齐全 |
+| 数量 | patch ≤ 512（MDL3 上限） |
+| Lua 5.1 | 无 ffi/bit/jit/goto/位运算/BOM |
+| 编码 | UTF-8 无 BOM |
+| 体积 | 单脚本 ≤ 4 MB（Chef 上限） |
 
 ### Step 7 · 部署与实机验证
 
 ```bash
-# 部署（会等游戏关闭）
-& "C:\Users\50709\Desktop\HD2 Mod Quick Deploy.exe"    # GUI：导入文件夹 → 勾选 → Deploy
-# 或 hd2qd（若已加入 PATH）
-hd2qd add "D:/HD2 Mods/_src/<名字>/build" --whole
-hd2qd deploy
-hd2qd lua          # 部署前 Lua 检查：启动脚本归属 / 加载器 / 哪些 mod 不会启动
+python tools/hd2mod.py install "<工程目录>"
 ```
+
+这个命令会：把 `dist/` 下的成品复制进 mod 库 → 有 `hd2qd` 就直接 `add` + `deploy` →
+没有就打印"拖进管理器点 Deploy"两步。
+
+> 用户只需要记住一件事：**打开管理器 → 勾选新 mod → Deploy → 进游戏按 ESC**。
 
 实机四问，逐条记录：
 
@@ -384,12 +459,12 @@ hd2qd lua          # 部署前 Lua 检查：启动脚本归属 / 加载器 / 哪
 - 引擎按名字解析资源，名字→ID 就是 murmur64；不匹配等于"资源存在但没人叫得出名字"。
 - `srkit list` 里 `name` 列显示为空是正常的 —— 这个包里没有名字表，名字由 ID 反推。
 
-#### 6.1.3 打包（手工版，用于排错）
+#### 6.1.3 手工打包（只在排错时用）
+
+正常路径是 `hd2mod.py build`，**不需要 srkit**。下面这套只在"我要看看包里到底有什么"时用。
 
 ```bash
-SRK="C:/Users/50709/Downloads/modtool/hd2-srkit-master"
-
-# 1) 解一个已知可用的包当参照（学习格式，不要发布他的内容）
+# 1) 解开看结构（学习格式，不要发布别人的内容）
 python -m srkit unpack "<某个 lua mod 的 patch_0>" -o "<ws>"
 
 # 2) 改 script.lua，并同步三处：
@@ -401,12 +476,15 @@ python -m srkit unpack "<某个 lua mod 的 patch_0>" -o "<ws>"
 python -m srkit pack "<ws>" -o "<out>"
 
 # 4) 验证资源层（不是容器层）
-python -m srkit verify "<ws>"          # 1 identical 才算编码正确
-python -m srkit list "<out>/9ba626afa44a3aa3.patch_0"   # 看 ID 对不对
+python -m srkit verify "<ws>"                            # 1 identical 才算编码正确
+python -m srkit list "<out>/9ba626afa44a3aa3.patch_0"    # 看 ID 对不对
 ```
 
-> `pack` 会把容器按 16 字节对齐，所以**产物长度与原件不同是正常的**【实测】。
-> 判据永远是 `verify`（资源层）与 `list`（ID 层），不是 `cmp`（容器层）。
+**两个必须知道的 srkit 行为**【实测】：
+
+1. `pack` 会把容器按 16 字节对齐 → 产物长度与原件不同。判据是 `verify`（资源层）与 `list`（ID 层），不是 `cmp`。
+2. `pack` **保留源包的"自身长度"字段**（头部 `0x20`）→ 重打包后尺寸变了，那个字段还是旧值。
+   本技能自带的打包器会正确写入，所以 **Lua 包优先用 `hd2mod.py build`**。
 
 #### 6.1.4 脚本契约【推断，已在一个实机可用 mod 上验证】
 
@@ -459,10 +537,11 @@ end
 ### 6.2 路线 B · 资源替换
 
 ```bash
-SRK="C:/Users/50709/Downloads/modtool/hd2-srkit-master"
+# 路线 B 才需要 srkit；Lua 路线完全用不到
+SRK="${HD2_SRKIT:-<srkit目录>}"
 
-# 1) 从游戏里定位并解出目标资源
-python -m srkit list "D:/Steam/steamapps/common/Helldivers 2/data" --type texture --limit 20
+# 1) 从游戏里定位并解出目标资源（<游戏> 由 doctor 给出）
+python -m srkit list "<游戏>/data" --type texture --limit 20
 python -m srkit extract "<游戏 data 或某个 patch>" --id <resource-id> -o ./out
 
 # 2) 解包成工作区
@@ -497,7 +576,7 @@ python -m srkit pack ./ws -o ./build
 
 需要动手时，直接读：
 
-- `C:/Users/50709/Downloads/modtool/hd2-datamined-master/INDEX.md`（唯一索引入口）
+- `hd2-datamined/INDEX.md`（唯一索引入口；仓库自备，不在本技能内）
 - 同目录 `BUILDS.md`（换 build 三步）、`docs/boundaries/MEMORY-ACCESS-25988413.md`（为什么内存路线死路）
 - 同仓库 `skills/hd2-file-route-mod/SKILL.md`（方法论文档）
 
@@ -537,24 +616,30 @@ python -m srkit pack ./ws -o ./build
 
 ### 7.3 工具约束
 
-| 工具 | 位置 | 允许做什么 | 禁止做什么 |
+| 工具 | 是否必需 | 允许做什么 | 禁止做什么 |
 |---|---|---|---|
-| `srkit` | `modtool/hd2-srkit-master` | 解包 / 列资源 / 改字节 / 重打包 / 往返校验 | 手改容器头、跳过 `verify` |
-| `hd2-datamined` | `modtool/hd2-datamined-master` | 读文档、跑离线工具 | 在游戏运行时改盘上文件 |
-| `MDL3` | `modtool/MDL3-...` | 游戏内管理、Data Hub 读取 | 打包进自己的 mod、重复部署 |
-| `hd2-mod-cli` | 桌面 `HD2 Mod Quick Deploy.exe` | 导入/部署/回滚/库管理 | 与别的管理器并用 |
+| `tools/hd2mod.py` | **必需** | 体检 / 建工程 / 打包 / 门禁 / 安装 | 手改生成的 patch 字节 |
+| `hd2-mod-cli` | 必需（部署） | 导入 / 部署 / 回滚 / 库管理 | 与别的管理器并用 |
+| `MDL3` | 视目标 | 游戏内管理、Data Hub 读取 | 打包进自己的 mod、重复部署 |
+| `srkit` | **可选**（只有路线 B 要） | 解包 / 列资源 / 改字节 / 重打包 / 往返校验 | 用它的 `pack` 生成 Lua 包（会留陈旧长度字段） |
+| `hd2-datamined` | 可选（只有路线 C 要） | 读文档、跑离线工具 | 在游戏运行时改盘上文件 |
+
+> **为什么 Lua 包不用 srkit 打**：`srkit pack` 会保留源包的"自身长度"字段（头部 `0x20`），
+> 重新打包后尺寸变了、字段还是旧值。本技能自带的打包器会正确写入，且已与真实包逐字节对齐。
 
 **MDL3 分发限制【文档】**：非自由软件。**不得**二次上传/改包分发；**可以**做依赖它的 mod，但必须在 README 写明依赖并链回官方发布页。不要把 MDL3 打进你的整合包。
 
 ### 7.4 管理器（hd2-mod-cli）工作流适配
 
-| 概念 | 你的环境 |
+**路径不要写死**，全部由 `doctor` 探测并记到 `~/.hd2-gameplay-mod/config.json`。
+
+| 概念 | 说明 |
 |---|---|
 | 数据目录 | `%USERPROFILE%\.hd2-mod-cli`（`config.json` / `library.json` / `deployed.json`） |
-| 库目录 | `D:\HD2 Mods`（与游戏同在 D 盘 → **硬链接部署**，不占额外空间） |
-| 游戏目录 | `D:\Steam\steamapps\common\Helldivers 2` |
+| 库目录 | 由 `doctor` 找出（通常与游戏同盘 → **硬链接部署**，不占额外空间） |
+| 游戏目录 | 由 `doctor` 从 Steam 库自动发现 |
 | 排序语义 | **列表越靠下优先级越高**；加载器由 `loader` 单独选择，部署时排在所有 mod 之后 |
-| 部署单位 | `data/9ba626afa44a3aa3.patch_N`（N 由管理器连续重排） |
+| 部署单位 | `<游戏>/data/9ba626afa44a3aa3.patch_N`（N 由管理器连续重排） |
 
 常用（若 `hd2qd` 未在 PATH，用 GUI 的同等功能）：
 
@@ -577,7 +662,7 @@ hd2qd profile-new <名字>    # 建一个只含本 mod 的配置，做干净基�
 游戏更新后，按顺序跑，任一步不过就停：
 
 1. `python tests/selftest.py`（srkit 自检）
-2. `python -m srkit info "D:/Steam/steamapps/common/Helldivers 2/data"`（归档形态还认不认）
+2. `python -m srkit info "<游戏>/data"`（归档形态还认不认；<游戏> 由 doctor 给出）
 3. 记录新 build 号，与 `verified-build` 对比
 4. 你自己的 mod：`hd2qd lua` 看是否仍被识别、`hd2qd lua-syntax` 看是否仍能编译
 5. `srkit list` 你的 `patch_0`，确认 `file_id` 仍等于 `murmur64(module)`
@@ -713,14 +798,16 @@ zip 根目录**直接**放 `manifest.json`（不要多套一层文件夹，部�
 
 ### 11.1 工具清单
 
-| 工具 | 路径 | 版本/基线 |
+| 工具 | 路径 | 说明 |
 |---|---|---|
-| srkit | `C:/Users/50709/Downloads/modtool/hd2-srkit-master` | 基线 build 25988413，17/17 自检 |
-| hd2-datamined | `.../hd2-datamined-master` | 基线 build 26251122 |
-| MDL3 + Data Hub | `.../MDL3-3.0.0-dev.36-preview-Data-Hub-0.3.0` | dev.36 / Hub 0.3.0 |
-| MDL3 EAC 修复包 | 同目录 `MDL3-EAC-Fix-Kit-1.0.2.zip` | 1.0.2 |
-| mod 管理器 | `C:\Users\50709\Desktop\HD2 Mod Quick Deploy.exe` | hd2-mod-cli |
-| 本技能工具 | `tools/hd2mod.py` | new / build / check / lint |
+| **本技能工具** | `tools/hd2mod.py` | 零依赖；`doctor/new/build/check/install/lint` |
+| mod 管理器 | `hd2qd`（PATH）或 `HD2 Mod Quick Deploy.exe` | hd2-mod-cli；`doctor` 会自动找 |
+| MDL3 + Data Hub | 官方发布页下载 | dev.36 / Hub 0.3.0，**必须放最高优先级** |
+| MDL3 EAC 修复包 | 随 MDL3 包附带 `MDL3-EAC-Fix-Kit-*.zip` | 菜单不出现时用 |
+| srkit | 可选，自备 | 只有路线 B 需要 |
+| hd2-datamined | 可选，自备 | 只有路线 C 需要 |
+
+> 除本技能工具外，其它都不是必需品。**只做路线 A 的话，一个 `hd2mod.py` 加一个管理器就够了。**
 
 ### 11.2 证据来源
 

@@ -21,15 +21,24 @@ MyMod/                              ← 可被管理器导入的根
 
 ## 2. 容器的字节结构（单 lua 资源）
 
-| 字段 | 值 | 说明 |
+头部固定 72 字节，类型表 32 字节/项，条目表 80 字节/项。
+
+| 偏移 / 字段 | 值 | 说明 |
 |---|---|---|
-| `magic` | `4026531857` (`0xF0000011`) | 固定 |
-| `types[0].type_id` | `11623383793923069922` (`0xA14E8DFA2CD117E2`) | lua 资源类型 |
-| `types[0].unk2/unk3` | `16 / 16` | 实测样本值 |
-| `entries[0].unknown3/unknown4` | `16 / 16` | 实测样本值 |
-| `entries[0].toc_data_offset` | `192` | 1 类型 + 1 条目时的头部长度 |
-| 资源 blob 头 | `u32 payload_size` + `u32 unknown(=2)` | 之后才是 Lua 源码 |
-| 容器对齐 | 16 字节 | `pack` 会对齐，**所以产物长度通常与原件不同** |
+| `0x00 u32 magic` | `0xF0000011` (`4026531857`) | 固定 |
+| `0x04 u32` | `1` | 类型数 |
+| `0x08 u32` | `1` | 条目数 |
+| `0x0C u32` | `0` | 未知，恒 0 |
+| `0x10..0x48` | 56 字节 | 未知区 |
+| **`0x20 u32`** | **本包总长度** | **自身尺寸字段**，必须等于文件实际字节数 |
+| `0x48` 类型表 | `u64 unk1=0, u64 type_id, u64 文件数, u32 16, u32 16` | type_id = `0xA14E8DFA2CD117E2` |
+| `0x68` 条目表 | `u64 file_id, u64 type_id, u64 toc_off, u64 stream_off, u64 gpu_off, u64 0, u64 0, u32 toc_size, u32 stream_size, u32 gpu_size, u32 16, u32 16, u32 entry_index=0` | 共 80 字节 |
+| `0xC0` (=192) | toc blob 起点 | `align_up(0xB8, 16)` |
+| 末尾 | **不补齐** | retail 包就是不补的 |
+
+> **`0x20` 这个自尺寸字段是踩过的坑**：三个真实包（85712 / 22128 / 2575152 字节）
+> 的该字段都精确等于自己的文件长度【实测】。`srkit pack` 会**保留**源包的这个值，
+> 重新打包后尺寸变了它不会更新 —— 所以 Lua 包用 `hd2mod.py build`，别用 `srkit pack`。
 
 Lua 资源 blob 的结构（`srkit/resources/lua.py` 同源结论）：
 
@@ -39,6 +48,9 @@ u32 unknown          实测恒为 2
 payload              UTF-8 Lua 源码（或 LuaJIT 字节码，本版本禁止）
 [trailing]           可选尾部字节
 ```
+
+所以单资源包的字节数恒等于：`192 + 8 + 脚本字节数`。
+（1421 字节的包 = 192 + 8 + 1221 字节脚本。）
 
 ## 3. 资源 ID 规则（最容易错）
 
@@ -50,10 +62,13 @@ file_id == murmur64("mods/<作者>/<名字>")
 - 包里没有名字表，`srkit list` 的 `name` 列为空是正常的：名字只能由 ID 反推。
 - ID 不匹配的表现：**包能解析、资源在里面，但加载器找不到你的脚本**（静默，不报错）。
 
-算：
+算（两条路，结果一样）：
 
 ```bash
-cd "C:/Users/50709/Downloads/modtool/hd2-srkit-master"
+# 路线 1：本技能自带（不需要任何依赖）
+python -c "import sys;sys.path.insert(0,'tools');from hd2mod import murmur64;print(f'{murmur64(\"mods/aabc/anti_air\"):016X}')"
+
+# 路线 2：有 srkit 时
 python -m srkit hash "mods/aabc/anti_air"
 # mods/aabc/anti_air   murmur64=0x37FCC0A04812EAB6 murmur32=0x37FCC0A048
 ```
@@ -101,22 +116,23 @@ python -m srkit hash "mods/aabc/anti_air"
 ## 7. 复验命令（换 build 后照抄）
 
 ```bash
-SRK="C:/Users/50709/Downloads/modtool/hd2-srkit-master"
+# 0) 先跑本技能的门禁（零依赖，自带解析）
+python tools/hd2mod.py check "<工程目录>"
+
+# 下面这些需要 srkit（可选）；<游戏> 由 doctor 给出
+SRK="${HD2_SRKIT:?先设 HD2_SRKIT 指向 srkit 目录}"
 cd "$SRK"
 
 # 1) 工具自检
 python tests/selftest.py
 
 # 2) 游戏归档还能不能识别
-python -m srkit info "D:/Steam/steamapps/common/Helldivers 2/data"
+python -m srkit info "<游戏>/data"
 
 # 3) 你的产物：ID 对不对
 python -m srkit list "<你的 patch_0>"
 
 # 4) 你的产物：资源解码/重编码一致吗
-python -m srkit verify "<你的 ws 或 patch>"
-
-# 5) 整包解码检查
 python -m srkit check "<你的 patch_0>"
 ```
 
@@ -124,10 +140,12 @@ python -m srkit check "<你的 patch_0>"
 
 | 输出 | 含义 |
 |---|---|
-| `1 identical / 0 differing` | 资源层可逆，编码正确 |
+| `门禁通过` | ID、自长度、payload 长度全部自洽 |
+| `1 identical / 0 differing`（`verify`） | 资源层可逆，编码正确 |
 | `差异 0 / 失败 0`（`check`） | 整包解码-重编码一致 |
 | `no resource directory` | `resource_dir` 指错，或目录名与 ID 不一致 |
 | `ID ≠ murmur64(module)` | 名字与身份不匹配，加载器找不到 |
+| `头部自记长度 X ≠ 实际 Y` | 用了会保留陈旧长度的打包器（如 `srkit pack`） |
 
 ## 8. 常见构建故障
 
