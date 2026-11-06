@@ -14,6 +14,8 @@
 | 2026-10-27 | 官方发布启动崩溃清理指引；同日社区 Lua 加载器 0.11.0 发布 | 生态开始恢复 |
 | 2026-11-01 | Chef Shared Loader 1.4.x 迭代；MDL3 修复包 1.0.2 | — |
 | 2026-11-05 | 本机验证：build **26251122**，MDL3 **3.0.0-dev.36**，Data Hub **0.3.0** | — |
+| 2026-10-28 | **HD2SDK: Community Edition v3.11.1** | 模型/贴图路线的主力工具；支持 Blender 4.0–5.2 |
+| 2026-10-15 | HD2SDK-AQ-Edition v2.5.6（中文改版） | 可选：额外材质模板、PNG/TGA 自动转 DDS、ZIP 导出 |
 
 ## 2. 必须记住的三条更正
 
@@ -90,6 +92,47 @@ MDL3 的 `mdl_native_bridge.dll` 走的是最后一条。缺 **Certum Code Signi
 | patch 上限 | 约 512 个（保护性措施，后续版本可能放宽） |
 | Data Hub | 随包附带，单独开关；**不要打包进自己的 mod** |
 
+## 4.5 模型 / 资源 mod 的现状（与 Lua 路线分开看）
+
+模型 mod 不经过 Lua VM，也不依赖 MDL3；10-20 的运行时变更对它**没有直接影响**：
+
+| 项 | 结论 | 证据 |
+|---|---|---|
+| 护甲 / 头盔 / 武器 / 贴图替换 | ✅ 仍可用 | 社区持续更新；本机有可运行的武器模型 mod |
+| 制作工具 | Blender + **HD2SDK CE v3.11.1** | GitHub release 2026-10-28 |
+| 部署 | 管理器部署 + **重启** | 资源 mod 在 MDL3 里标 `LAUNCH ONLY` |
+| 游戏内热开关 | ❌ | MDL3 只能开关脚本部分 |
+| 多 mod 冲突 | 同一 `(type, resource_id)` 后加载者赢 | 用干净配置排查 |
+| 游戏更新后失效 | 常见：unit 数据/裁剪信息变了 | 用 HD2 Retagger 的 Update Old Mod 尝试修复 |
+| 反作弊 | 客户端外观改动通常不触发 EAC，但非官方保证 | SDK README 免责声明 + 社区实践 |
+
+**与 Lua 路线的分工**：
+
+- 只改外观 → 模型路线（本文件 §4.5 + `model-pipeline.md`）。
+- 要改行为/HUD/读数据 → Lua 路线（`SKILL.md` §6.1）。
+- 两者可以同一个包里共存，但资源部分仍需重启，MDL3 只能开关脚本部分。
+
+### 4.6 SDK 启动会联网，且两个请求没有超时
+
+`HD2SDK-CommunityEdition/__init__.py` 在 `register()` 里固定做三件事：
+
+| 调用 | 超时 | 不处理会怎样 |
+|---|---|---|
+| `CheckAddonUpToDate()` | 5 s | 慢，但会过 |
+| `UpdateArchiveHashes()` | **无** | 卡在 `api.github.com` / `raw.githubusercontent.com`，headless 构建永久挂住 |
+| `UpdateFriendlyNames()` | **无** | 同上 |
+
+国内网络下 `blender -b` 会**看起来像卡死**（CPU 接近 0、日志停在
+`Checking If Addon is up to date...`）。处理办法（二选一）：
+
+1. **给本地 addon 打补丁**（推荐，一次性）：
+   两个 `requests.get(...)` 加 `timeout=5`，并在函数开头加
+   `if os.environ.get("HD2SDK_OFFLINE") == "1": return`；
+   之后所有 headless 构建都用 `HD2SDK_OFFLINE=1 blender -b ...`。
+2. 用不可达代理强制快速失败：`HTTPS_PROXY=http://127.0.0.1:9`（不总是生效）。
+
+加超时不影响 GUI 正常使用；只是断网时不再挂死。
+
 ## 5. 环境由 `doctor` 探测，不要写死
 
 不同人的游戏目录、mod 库、管理器位置都不一样。**任何文档里都不要写死路径**，
@@ -108,9 +151,11 @@ python tools/hd2mod.py doctor
 | mod 库 | 配置缓存 → `HD2_LIB` → 游戏同盘的 `HD2 Mods` → 常见盘符 |
 | 管理器 | `hd2qd` 在 PATH？→ `%USERPROFILE%\.hd2-mod-cli` 有库数据？→ 桌面的 GUI |
 | 加载器 | 读管理器的 `library.json`，列出 MDL3 / Chef / BML / Bingus 及启用状态 |
+| Blender | `HD2_BLENDER` → 配置 → PATH → `Program Files/Blender Foundation` 等常见目录 |
+| HD2SDK | `HD2_SDK` → 配置 → `%APPDATA%/Blender Foundation/Blender/*/scripts/addons/*` → extensions |
 
 探测到的路径会写进 `~/.hd2-gameplay-mod/config.json`，下次直接复用。
-找不到时用 `set-game` / `set-lib` 手动指定一次即可。
+找不到时用 `set-game` / `set-lib` / `set-sdk` 手动指定一次即可。
 
 > 参考基线（作者机器，仅作对照，**不要当作通用路径**）：
 > build `26251122` · EAC 已就位 · 库与游戏同盘 · MDL3 启用 · `hd2qd` 未进 PATH（走 GUI）。
@@ -121,8 +166,10 @@ python tools/hd2mod.py doctor
 
 - Steam 更新了 HD2（build 号变了）
 - MDL3 / Chef / BML 发了新版本
+- Blender / HD2SDK 发了新版本（尤其是 major / 4.1+ API 变更）
 - 加载器菜单里出现"unsupported"
 - 你自己或用户的 mod 在"昨天还能跑"的情况下失效
+- 模型/贴图 mod 出现“只有本版本崩”“部件消失”“装备界面崩”
 - Arrowhead 再发反作弊或 mod 相关公告
 
 核实渠道（按可信度排序）：
